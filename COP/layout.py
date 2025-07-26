@@ -13,6 +13,7 @@ def sidebar() -> rx.Component:
             rx.link("Logout", href="/"),
             spacing="4",
             align="start",
+            padding_top="4em"
         ),
         width="200px",
         padding="1em",

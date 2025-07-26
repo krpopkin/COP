@@ -23,6 +23,14 @@ def get_user(username, password):
     conn.close()
     return user
 
+def get_all_users():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT username, permission FROM users")
+    users = cur.fetchall()
+    conn.close()
+    return users
+
 def add_user(username, password, permission):
     conn = get_db_connection()
     cur = conn.cursor()
