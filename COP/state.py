@@ -1,5 +1,5 @@
 import reflex as rx 
-from db import get_user, get_all_users, add_user, update_user_permission, delete_user, ensure_users_table, ensure_admin_user
+from db import get_user, get_all_users, add_user, update_user_permission, delete_user
 
 class State(rx.State):
     """The app state."""
