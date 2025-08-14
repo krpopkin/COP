@@ -26,8 +26,8 @@ python-engineio==4.12.2
 python-multipart==0.0.20
 python-socketio==5.13.0
 redis==6.2.0
-reflex==0.8.3
-reflex-hosting-cli==0.1.53
+reflex==0.8.6
+reflex-hosting-cli==0.1.55
 requests==2.32.4
 rich==14.0.0
 simple-websocket==1.1.0
