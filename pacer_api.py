@@ -2,7 +2,7 @@
 
 import requests
 from typing import Dict, Any, Optional, List
-from db import get_db_connection
+from db import get_conn
 
 # ===== Choose environment: "QA" or "PROD" =====
 ENV = "QA"   # change to "PROD" when you’re ready
@@ -96,7 +96,7 @@ def upsert_pacer_cases(cases: List[Dict[str, Any]]) -> int:
     inserted = 0
     updated = 0
 
-    conn = get_db_connection()
+    conn = get_conn()
     try:
         with conn:
             for c in cases:

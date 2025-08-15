@@ -8,7 +8,10 @@ class State(rx.State):
     permission: str = ""
     login_error: str = ""
 
-    users: list[tuple[str, str]] = []  # List of (username, permission)
+    # Raw data from database
+    users: list[dict] = []  
+    # Simplified for UI display
+    users_display: list[list] = []  
 
     new_username: str = ""
     new_password: str = ""
@@ -19,7 +22,7 @@ class State(rx.State):
     def on_login(self):
         user = get_user(self.userid, self.password)
         if user:
-            self.permission = user[1]
+            self.permission = user["permission"]
             self.login_error = ""
             return rx.redirect("/pacer")  
         else:
@@ -27,7 +30,10 @@ class State(rx.State):
             
     def load_users(self):
         self.users = get_all_users()
-        self.edit_permission = {user[0]: user[1] for user in self.users}
+        self.edit_permission = {user["username"]: user["permission"] for user in self.users}
+        
+        # Create the simplified display format
+        self.users_display = [[user["username"], user["permission"]] for user in self.users]
 
     def on_add_user(self):
         add_user(self.new_username, self.new_password, self.new_permission)
