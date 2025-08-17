@@ -12,12 +12,18 @@ class State(rx.State):
     users: list[dict] = []  
     # Simplified for UI display
     users_display: list[list] = []  
+    show_users: bool = False
 
     new_username: str = ""
     new_password: str = ""
     new_permission: str = "browse"
     
     edit_permission: dict[str, str] = {}
+
+    def on_mount(self):
+        """Initialize state and load data."""
+        self.show_users = False
+        self.load_users()
 
     def on_login(self):
         user = get_user(self.userid, self.password)
@@ -29,26 +35,42 @@ class State(rx.State):
             self.login_error = "Invalid credentials"
             
     def load_users(self):
-        self.users = get_all_users()
-        self.edit_permission = {user["username"]: user["permission"] for user in self.users}
-        
-        # Create the simplified display format
-        self.users_display = [[user["username"], user["permission"]] for user in self.users]
+        try:
+            self.users = get_all_users()
+            self.edit_permission = {user["username"]: user["permission"] for user in self.users}
+            
+            # Create the simplified display format
+            self.users_display = [[user["username"], user["permission"]] for user in self.users]
+            self.show_users = True
+        except Exception as e:
+            print(f"Error loading users: {e}")
+            self.users = []
+            self.users_display = []
+            self.show_users = False
 
     def on_add_user(self):
-        add_user(self.new_username, self.new_password, self.new_permission)
-        self.new_username = ""
-        self.new_password = ""
-        self.new_permission = "browse"
-        self.load_users()
+        try:
+            add_user(self.new_username, self.new_password, self.new_permission)
+            self.new_username = ""
+            self.new_password = ""
+            self.new_permission = "browse"
+            self.load_users()
+        except Exception as e:
+            print(f"Error adding user: {e}")
 
     def on_update_permission(self, username: str, permission: str):
         self.edit_permission[username] = permission
 
     def on_save_permission(self, username: str):
-        update_user_permission(username, self.edit_permission[username])
-        self.load_users()
+        try:
+            update_user_permission(username, self.edit_permission[username])
+            self.load_users()
+        except Exception as e:
+            print(f"Error saving permission: {e}")
 
     def on_delete_user(self, username: str):
-        delete_user(username)
-        self.load_users()
+        try:
+            delete_user(username)
+            self.load_users()
+        except Exception as e:
+            print(f"Error deleting user: {e}")

@@ -48,6 +48,40 @@ def delete_user(username: str):
     with get_conn() as c:
         c.execute("DELETE FROM users WHERE username=%s", (username,))
 
+# ---------- regions CRUD ----------
+def fetch_all_regions() -> list[dict]:
+    """Fetch all regions from the database."""
+    try:
+        with get_conn() as c:
+            rows = c.execute(
+                "SELECT id, region_name FROM regions ORDER BY region_name"
+            ).fetchall()
+            return [dict(r) for r in rows]
+    except pg_errors.UndefinedTable:
+        # If table isn't created yet, don't crash the UI
+        return []
+
+def add_region(region_name: str):
+    """Add a new region to the database."""
+    with get_conn() as c:
+        c.execute(
+            "INSERT INTO regions (region_name) VALUES (%s)",
+            (region_name,),
+        )
+
+def update_region(region_id: int, region_name: str):
+    """Update an existing region in the database."""
+    with get_conn() as c:
+        c.execute(
+            "UPDATE regions SET region_name=%s WHERE id=%s",
+            (region_name, region_id),
+        )
+
+def delete_region(region_id: int):
+    """Delete a region from the database."""
+    with get_conn() as c:
+        c.execute("DELETE FROM regions WHERE id=%s", (region_id,))
+
 # ---------- pacer_cases ----------
 def fetch_all_cases(limit: Optional[int] = None) -> list[dict]:
     sql = "SELECT * FROM pacer_cases ORDER BY date_filed DESC"

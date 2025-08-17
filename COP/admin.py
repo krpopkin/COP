@@ -1,6 +1,53 @@
 import reflex as rx
 from COP.layout import with_sidebar
 from COP.state import State
+from db import fetch_all_regions, add_region, update_region, delete_region
+
+class RegionsState(rx.State):
+    regions: list[dict] = []
+    show_regions: bool = False
+    new_region_name: str = ""
+
+    def on_mount(self):
+        """Initialize regions state and load data."""
+        self.show_regions = False
+        self.load_regions_data()
+
+    def load_regions_data(self):
+        """Load regions data from database."""
+        try:
+            self.regions = fetch_all_regions()
+            self.show_regions = True
+        except Exception as e:
+            print(f"Error loading regions: {e}")
+            self.regions = []
+            self.show_regions = False
+
+    def add_new_region(self):
+        """Add new region to database."""
+        if self.new_region_name:
+            try:
+                add_region(self.new_region_name)
+                self.new_region_name = ""
+                self.load_regions_data()
+            except Exception as e:
+                print(f"Error adding region: {e}")
+
+    def update_region_data(self, region_id: int, name: str):
+        """Update region in database."""
+        try:
+            update_region(region_id, name)
+            self.load_regions_data()
+        except Exception as e:
+            print(f"Error updating region: {e}")
+
+    def delete_region_data(self, region_id: int):
+        """Delete region from database."""
+        try:
+            delete_region(region_id)
+            self.load_regions_data()
+        except Exception as e:
+            print(f"Error deleting region: {e}")
 
 def admin() -> rx.Component:
     return rx.cond(
@@ -8,71 +55,142 @@ def admin() -> rx.Component:
         with_sidebar(
             rx.box(
                 rx.vstack(
-                    rx.center(rx.heading("Admin Panel", size="7", padding="0.0em"), width="60%"),
+                    rx.center(rx.heading("Admin Panel", size="7", padding="0.0em"), width="100%"),
 
-                    rx.button("Refresh Users", on_click=State.load_users),
-
-                    # Table Header
                     rx.hstack(
-                        rx.box(rx.text("Username", weight="bold"), width="20%"),
-                        rx.box(rx.text("Permission", weight="bold"), width="20%"),
-                        rx.box(rx.text("Actions", weight="bold"), width="33%"),
-                        width="100%"
-                    ),
+                        # Left side - Users section
+                        rx.vstack(
+                            # Users Table Header
+                            rx.hstack(
+                                rx.box(rx.text("Username", weight="bold"), width="25%"),
+                                rx.box(rx.text("Permission", weight="bold"), width="25%"),
+                                rx.box(rx.text("Actions", weight="bold"), width="50%"),
+                                width="100%"
+                            ),
 
-                    # Using the simplified display format
-                    rx.foreach(
-                        State.users_display,
-                        lambda user_data: rx.hstack(
-                            rx.text(user_data[0], width="20%"),  # username
+                            # Users Table Data
+                            rx.cond(
+                                State.show_users,
+                                rx.foreach(
+                                    State.users_display,
+                                    lambda user_data: rx.hstack(
+                                        rx.text(user_data[0], width="25%"),  # username
+                                        rx.select(
+                                            ["admin", "edit", "browse"],
+                                            value=user_data[1],  # permission
+                                            on_change=lambda val: State.on_update_permission(user_data[0], val),
+                                            width="25%",
+                                        ),
+                                        rx.hstack(
+                                            rx.button(
+                                                "Save",
+                                                on_click=lambda _, username=user_data[0]: State.on_save_permission(username),
+                                                size="1"
+                                            ),
+                                            rx.button(
+                                                "Delete",
+                                                on_click=lambda _, username=user_data[0]: State.on_delete_user(username),
+                                                size="1",
+                                                color_scheme="red"
+                                            ),
+                                        ),
+                                        width="100%",
+                                    )
+                                ),
+                                rx.text("Loading users...", size="2")
+                            ),
+
+                            rx.divider(margin_y="2em"),
+                            rx.heading("Add New User", size="5"),
+                            rx.input(
+                                placeholder="Username",
+                                value=State.new_username,
+                                on_change=State.set_new_username
+                            ),
+                            
+                            rx.input(
+                                placeholder="Password",
+                                type="password",
+                                value=State.new_password,
+                                on_change=State.set_new_password
+                            ),
+                            
                             rx.select(
                                 ["admin", "edit", "browse"],
-                                value=user_data[1],  # permission
-                                on_change=lambda val: State.on_update_permission(user_data[0], val),
-                                width="20%",
+                                value=State.new_permission,
+                                on_change=State.set_new_permission
                             ),
-                            rx.hstack(
-                                rx.button(
-                                    "Save",
-                                    on_click=lambda _, username=user_data[0]: State.on_save_permission(username),
-                                    size="1"
-                                ),
-                                rx.button(
-                                    "Delete",
-                                    on_click=lambda _, username=user_data[0]: State.on_delete_user(username),
-                                    size="1",
-                                    color_scheme="red"
-                                ),
-                            ),
-                            width="100%",
-                        )
-                    ),
+                            rx.button("Add User", on_click=State.on_add_user),
+                            
+                            spacing="4",
+                            align="start",
+                            width="48%",
+                            on_mount=State.on_mount,
+                        ),
 
-                    rx.divider(margin_y="2em"),
-                    rx.heading("Add New User", size="5"),
-                    rx.input(
-                        placeholder="Username",
-                        value=State.new_username,
-                        on_change=State.set_new_username
+                        # Right side - Regions section
+                        rx.vstack(
+                            # Regions Table Header
+                            rx.hstack(
+                                rx.box(rx.text("Region Name", weight="bold"), width="65%"),
+                                rx.box(rx.text("Actions", weight="bold"), width="35%"),
+                                width="100%"
+                            ),
+
+                            # Regions Table Data
+                            rx.cond(
+                                RegionsState.show_regions,
+                                rx.foreach(
+                                    RegionsState.regions,
+                                    lambda region: rx.hstack(
+                                        rx.box(rx.text(region["region_name"], size="2"), width="65%"),
+                                        rx.box(
+                                            rx.hstack(
+                                                rx.button(
+                                                    "Edit",
+                                                    size="1"
+                                                ),
+                                                rx.button(
+                                                    "Delete",
+                                                    on_click=lambda _, region_id=region["id"]: RegionsState.delete_region_data(region_id),
+                                                    size="1",
+                                                    color_scheme="red"
+                                                ),
+                                                spacing="2",
+                                            ),
+                                            width="35%"
+                                        ),
+                                        width="100%",
+                                        py="2"
+                                    )
+                                ),
+                                rx.text("Loading regions...", size="2")
+                            ),
+
+                            rx.divider(margin_y="2em"),
+                            rx.heading("Add New Region", size="5"),
+                            rx.input(
+                                placeholder="Region Name",
+                                value=RegionsState.new_region_name,
+                                on_change=RegionsState.set_new_region_name
+                            ),
+                            
+                            rx.button("Add Region", on_click=RegionsState.add_new_region),
+                            
+                            spacing="4",
+                            align="start",
+                            width="48%",
+                            on_mount=RegionsState.on_mount,
+                        ),
+
+                        spacing="4",
+                        width="100%",
+                        align="start"
                     ),
-                    
-                    rx.input(
-                        placeholder="Password",
-                        type_="password",
-                        value=State.new_password,
-                        on_change=State.set_new_password
-                    ),
-                    
-                    rx.select(
-                        ["admin", "edit", "browse"],
-                        value=State.new_permission,
-                        on_change=State.set_new_permission
-                    ),
-                    rx.button("Add User", on_click=State.on_add_user),
 
                     spacing="4",
                     align="start",
-                    padding_top="0.0yem",  
+                    padding_top="0.0em",  
                     padding_x="2em",   
                 )
             )
