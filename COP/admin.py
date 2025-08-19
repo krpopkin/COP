@@ -1,12 +1,13 @@
 import reflex as rx
 from COP.layout import with_sidebar
 from COP.state import State
-from db import fetch_all_regions, add_region, update_region, delete_region
+from db import fetch_all_regions, add_region, update_region, delete_region, get_conn
 
 class RegionsState(rx.State):
     regions: list[dict] = []
     show_regions: bool = False
     new_region_name: str = ""
+    region_error_message: str = ""
 
     def on_mount(self):
         """Initialize regions state and load data."""
@@ -23,15 +24,48 @@ class RegionsState(rx.State):
             self.regions = []
             self.show_regions = False
 
+    def validate_region_in_court_ids(self, region_name: str) -> bool:
+        """Check if region exists in court_ids table."""
+        if not region_name:
+            return False
+
+        conn = get_conn()
+        if conn is None:
+            return False
+
+        try:
+            cur = conn.cursor()
+            query = "SELECT COUNT(*) FROM court_ids WHERE region = %s"
+            cur.execute(query, (region_name,))
+            result = cur.fetchone()
+            count = result[0] if isinstance(result, tuple) else result.get("count", 0)
+            return count > 0
+        except Exception:
+            return False
+        finally:
+            conn.close()
+
     def add_new_region(self):
-        """Add new region to database."""
-        if self.new_region_name:
-            try:
-                add_region(self.new_region_name)
-                self.new_region_name = ""
-                self.load_regions_data()
-            except Exception as e:
-                print(f"Error adding region: {e}")
+        """Add new region to database after validation."""
+        self.region_error_message = ""  # Clear previous error
+        
+        if not self.new_region_name:
+            self.region_error_message = "Please enter a region name"
+            return
+            
+        # Check if region is valid in court_ids table
+        if not self.validate_region_in_court_ids(self.new_region_name):
+            self.region_error_message = "The PACER API does not support this region"
+            return
+            
+        try:
+            add_region(self.new_region_name)
+            self.new_region_name = ""
+            self.region_error_message = ""
+            self.load_regions_data()
+        except Exception as e:
+            print(f"Error adding region: {e}")
+            self.region_error_message = "Error adding region to database"
 
     def update_region_data(self, region_id: int, name: str):
         """Update region in database."""
@@ -57,9 +91,91 @@ def admin() -> rx.Component:
                 rx.vstack(
                     rx.center(rx.heading("Admin Panel", size="7", padding="0.0em"), width="100%"),
 
+                    # Form inputs section
                     rx.hstack(
-                        # Left side - Users section
+                        # Left side - Users form
                         rx.vstack(
+                            rx.heading("Add New User", size="5"),
+                            rx.hstack(
+                                rx.input(
+                                    placeholder="Username",
+                                    value=State.new_username,
+                                    on_change=State.set_new_username,
+                                    width="120px"
+                                ),
+                                rx.input(
+                                    placeholder="Password",
+                                    type="password",
+                                    value=State.new_password,
+                                    on_change=State.set_new_password,
+                                    width="120px"
+                                ),
+                                rx.select(
+                                    ["admin", "edit", "browse"],
+                                    value=State.new_permission,
+                                    on_change=State.set_new_permission,
+                                    width="100px"
+                                ),
+                                spacing="1",
+                                align="center"
+                            ),
+                            spacing="4",
+                            align="start",
+                            width="48%"
+                        ),
+
+                        # Right side - Regions form
+                        rx.vstack(
+                            rx.heading("Add New Region", size="5"),
+                            rx.input(
+                                placeholder="Region Name",
+                                value=RegionsState.new_region_name,
+                                on_change=RegionsState.set_new_region_name,
+                                width="200px"
+                            ),
+                            spacing="4",
+                            align="start",
+                            width="48%"
+                        ),
+
+                        spacing="4",
+                        width="100%",
+                        align="start"
+                    ),
+
+                    # Buttons row
+                    rx.hstack(
+                        rx.button("Add User", on_click=State.on_add_user),
+                        rx.box(width="38%"),  # Spacer to align Add Region button with its form
+                        rx.button("Add Region", on_click=RegionsState.add_new_region),
+                        spacing="4",
+                        width="100%",
+                        align="start"
+                    ),
+                    
+                    # Error message display for regions
+                    rx.hstack(
+                        rx.box(width="48%"),  # Empty space to match left column width
+                        rx.cond(
+                            RegionsState.region_error_message != "",
+                            rx.text(
+                                RegionsState.region_error_message,
+                                color="red",
+                                size="2",
+                                weight="medium"
+                            ),
+                            rx.box()
+                        ),
+                        spacing="4",
+                        width="100%"
+                    ),
+
+                    # Tables section with top alignment
+                    rx.hstack(
+                        # Left side - Users table
+                        rx.vstack(
+                            rx.divider(margin_y="1em"),
+                            
                             # Users Table Header
                             rx.hstack(
                                 rx.box(rx.text("Username", weight="bold"), width="25%"),
@@ -99,37 +215,16 @@ def admin() -> rx.Component:
                                 ),
                                 rx.text("Loading users...", size="2")
                             ),
-
-                            rx.divider(margin_y="2em"),
-                            rx.heading("Add New User", size="5"),
-                            rx.input(
-                                placeholder="Username",
-                                value=State.new_username,
-                                on_change=State.set_new_username
-                            ),
                             
-                            rx.input(
-                                placeholder="Password",
-                                type="password",
-                                value=State.new_password,
-                                on_change=State.set_new_password
-                            ),
-                            
-                            rx.select(
-                                ["admin", "edit", "browse"],
-                                value=State.new_permission,
-                                on_change=State.set_new_permission
-                            ),
-                            rx.button("Add User", on_click=State.on_add_user),
-                            
-                            spacing="4",
+                            spacing="2",
                             align="start",
-                            width="48%",
-                            on_mount=State.on_mount,
+                            width="48%"
                         ),
 
-                        # Right side - Regions section
+                        # Right side - Regions table
                         rx.vstack(
+                            rx.divider(margin_y="1em"),
+                            
                             # Regions Table Header
                             rx.hstack(
                                 rx.box(rx.text("Region Name", weight="bold"), width="65%"),
@@ -166,21 +261,10 @@ def admin() -> rx.Component:
                                 ),
                                 rx.text("Loading regions...", size="2")
                             ),
-
-                            rx.divider(margin_y="2em"),
-                            rx.heading("Add New Region", size="5"),
-                            rx.input(
-                                placeholder="Region Name",
-                                value=RegionsState.new_region_name,
-                                on_change=RegionsState.set_new_region_name
-                            ),
                             
-                            rx.button("Add Region", on_click=RegionsState.add_new_region),
-                            
-                            spacing="4",
+                            spacing="2",
                             align="start",
-                            width="48%",
-                            on_mount=RegionsState.on_mount,
+                            width="48%"
                         ),
 
                         spacing="4",
@@ -192,6 +276,7 @@ def admin() -> rx.Component:
                     align="start",
                     padding_top="0.0em",  
                     padding_x="2em",   
+                    on_mount=[State.on_mount, RegionsState.on_mount]
                 )
             )
         ),

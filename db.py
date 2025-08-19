@@ -96,3 +96,15 @@ def fetch_all_cases(limit: Optional[int] = None) -> list[dict]:
     except pg_errors.UndefinedTable:
         # If table isn't created yet, don't crash the UI
         return []
+    
+def delete_cases_by_ids(case_ids: list[int]) -> int:
+    """Delete cases by their case_ids and return count of deleted rows."""
+    if not case_ids:
+        return 0
+    
+    with get_conn() as c:
+        # Use placeholders for each case_id
+        placeholders = ','.join(['%s'] * len(case_ids))
+        sql = f"DELETE FROM pacer_cases WHERE case_id IN ({placeholders})"
+        result = c.execute(sql, case_ids)
+        return result.rowcount
