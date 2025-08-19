@@ -7,6 +7,7 @@ from db import fetch_all_cases, fetch_all_regions
 
 class PacerPageState(rx.State):
     date_from: str = ""
+    date_to: str = ""  # Add date_to field
     rows: list[dict] = []
     show_grid: bool = False
     sort_column: str = ""
@@ -62,17 +63,35 @@ class PacerPageState(rx.State):
     def load_more_cases(self):
         """Fetch more cases from PACER."""
         df = self.date_from or (date.today() - timedelta(days=1)).isoformat()
+        dt = self.date_to or (date.today() - timedelta(days=1)).isoformat()
+        
         cfg = pacer_api.env_cfg(pacer_api.ENV)
         token = pacer_api.authenticate(cfg["USERNAME"], cfg["PASSWORD"], cfg["AUTH_URL"])
         if not token:
             self.cases_loaded_count = 0
             self.show_cases_loaded = True
             return
-        cases = pacer_api.search_cases_by_date(token, cfg["PCL_API_ROOT"], df)
-        # Store the count of cases returned
-        self.cases_loaded_count = len(cases) if cases else 0
+        
+        all_cases = []
+        
+        if self.selected_region == "All":
+            # Loop through all regions
+            for region_data in self.regions:
+                region_name = region_data["region_name"]
+                print(f"Searching region: {region_name}")
+                cases = pacer_api.search_cases_by_date(token, cfg["PCL_API_ROOT"], df, dt, region_name)
+                if cases:
+                    all_cases.extend(cases)
+        else:
+            # Search for the specific selected region
+            cases = pacer_api.search_cases_by_date(token, cfg["PCL_API_ROOT"], df, dt, self.selected_region)
+            if cases:
+                all_cases.extend(cases)
+        
+        # Store the count of total cases returned
+        self.cases_loaded_count = len(all_cases)
         self.show_cases_loaded = True
-        pacer_api.upsert_pacer_cases(cases)
+        pacer_api.upsert_pacer_cases(all_cases)
         self.load_grid_data()
 
     def sort_data(self, column: str):
@@ -116,20 +135,8 @@ class PacerPageState(rx.State):
         return "↑" if self.sort_ascending else "↓"
 
     @rx.var
-    def sort_icon_case_type(self) -> str:
-        if self.sort_column != "case_type":
-            return "↕"
-        return "↑" if self.sort_ascending else "↓"
-
-    @rx.var
     def sort_icon_date_filed(self) -> str:
         if self.sort_column != "date_filed":
-            return "↕"
-        return "↑" if self.sort_ascending else "↓"
-
-    @rx.var
-    def sort_icon_jurisdiction_type(self) -> str:
-        if self.sort_column != "jurisdiction_type":
             return "↕"
         return "↑" if self.sort_ascending else "↓"
 
@@ -145,14 +152,8 @@ class PacerPageState(rx.State):
     def sort_by_case_number(self):
         self.sort_data("case_number")
     
-    def sort_by_case_type(self):
-        self.sort_data("case_type")
-    
     def sort_by_date_filed(self):
         self.sort_data("date_filed")
-    
-    def sort_by_jurisdiction_type(self):
-        self.sort_data("jurisdiction_type")
 
 def pacer() -> rx.Component:
     yday = (date.today() - timedelta(days=1)).isoformat()
@@ -179,7 +180,8 @@ def pacer() -> rx.Component:
                 rx.input(
                     type="date", 
                     value=yday, 
-                    width="14rem"
+                    width="14rem",
+                    on_change=PacerPageState.set_date_to,  # Add on_change handler
                 ),
                 align="start",
                 spacing="1",
@@ -238,7 +240,7 @@ def pacer() -> rx.Component:
                                 ),
                                 spacing="1",
                             ),
-                            width="20%"
+                            width="25%"
                         ),
                         rx.box(
                             rx.hstack(
@@ -251,7 +253,7 @@ def pacer() -> rx.Component:
                                 ),
                                 spacing="1",
                             ),
-                            width="15%"
+                            width="20%"
                         ),
                         rx.box(
                             rx.hstack(
@@ -264,7 +266,7 @@ def pacer() -> rx.Component:
                                 ),
                                 spacing="1",
                             ),
-                            width="15%"
+                            width="20%"
                         ),
                         rx.box(
                             rx.hstack(
@@ -277,20 +279,7 @@ def pacer() -> rx.Component:
                                 ),
                                 spacing="1",
                             ),
-                            width="15%"
-                        ),
-                        rx.box(
-                            rx.hstack(
-                                rx.text("Case Type", weight="bold", size="2"),
-                                rx.button(
-                                    PacerPageState.sort_icon_case_type,
-                                    variant="ghost",
-                                    size="1",
-                                    on_click=PacerPageState.sort_by_case_type,
-                                ),
-                                spacing="1",
-                            ),
-                            width="15%"
+                            width="20%"
                         ),
                         rx.box(
                             rx.hstack(
@@ -303,20 +292,7 @@ def pacer() -> rx.Component:
                                 ),
                                 spacing="1",
                             ),
-                            width="10%"
-                        ),
-                        rx.box(
-                            rx.hstack(
-                                rx.text("Jurisdiction", weight="bold", size="2"),
-                                rx.button(
-                                    PacerPageState.sort_icon_jurisdiction_type,
-                                    variant="ghost",
-                                    size="1",
-                                    on_click=PacerPageState.sort_by_jurisdiction_type,
-                                ),
-                                spacing="1",
-                            ),
-                            width="10%"
+                            width="15%"
                         ),
                         width="100%",
                         border_bottom="2px solid #333",
@@ -334,14 +310,12 @@ def pacer() -> rx.Component:
                                         target="_blank",
                                         size="2"
                                     ), 
-                                    width="20%"
+                                    width="25%"
                                 ),
-                                rx.box(rx.text(case_data["court_id"], size="2"), width="15%"),
-                                rx.box(rx.text(case_data["case_id"], size="2"), width="15%"),
-                                rx.box(rx.text(case_data["case_number"], size="2"), width="15%"),
-                                rx.box(rx.text(case_data["case_type"], size="2"), width="15%"),
-                                rx.box(rx.text(case_data["date_filed"], size="2"), width="10%"),
-                                rx.box(rx.text(case_data["jurisdiction_type"], size="2"), width="10%"),
+                                rx.box(rx.text(case_data["court_id"], size="2"), width="20%"),
+                                rx.box(rx.text(case_data["case_id"], size="2"), width="20%"),
+                                rx.box(rx.text(case_data["case_number"], size="2"), width="20%"),
+                                rx.box(rx.text(case_data["date_filed"], size="2"), width="15%"),
                                 width="100%",
                                 py="2"
                             ),

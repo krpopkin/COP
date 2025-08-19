@@ -3,7 +3,7 @@ from COP.layout import with_sidebar
 from COP.state import State
 import pacer_api
 from datetime import date, timedelta
-from db import fetch_all_cases
+from db import fetch_all_cases, fetch_all_regions
 
 class PacerPageState(rx.State):
     date_from: str = ""
@@ -11,15 +11,48 @@ class PacerPageState(rx.State):
     show_grid: bool = False
     sort_column: str = ""
     sort_ascending: bool = True
+    regions: list[dict] = []
+    selected_region: str = "All"
+    cases_loaded_count: int = 0
+    show_cases_loaded: bool = False
 
     def on_mount(self):
-        """Initialize state."""
+        """Initialize state and load data."""
         self.show_grid = False
+        self.load_regions()
+        self.load_grid_data()
+
+    def load_regions(self):
+        """Load regions from database."""
+        try:
+            self.regions = fetch_all_regions()
+        except Exception as e:
+            print(f"Error loading regions: {e}")
+            self.regions = []
+
+    @rx.var
+    def region_options(self) -> list[str]:
+        """Get region options with 'All' as first option."""
+        options = ["All"]
+        for region in self.regions:
+            options.append(region["region_name"])
+        return options
 
     def load_grid_data(self):
         """Load grid data when button is clicked."""
         try:
             self.rows = fetch_all_cases()
+            # Sort by date_filed in descending order by default
+            self.sort_column = "date_filed"
+            self.sort_ascending = False
+            
+            def sort_key(item):
+                value = item.get("date_filed", "")
+                if value is None:
+                    return ""
+                return str(value).lower()
+            
+            self.rows = sorted(self.rows, key=sort_key, reverse=True)  # reverse=True for descending
             self.show_grid = True
         except Exception as e:
             print(f"Error: {e}")
@@ -32,8 +65,13 @@ class PacerPageState(rx.State):
         cfg = pacer_api.env_cfg(pacer_api.ENV)
         token = pacer_api.authenticate(cfg["USERNAME"], cfg["PASSWORD"], cfg["AUTH_URL"])
         if not token:
+            self.cases_loaded_count = 0
+            self.show_cases_loaded = True
             return
         cases = pacer_api.search_cases_by_date(token, cfg["PCL_API_ROOT"], df)
+        # Store the count of cases returned
+        self.cases_loaded_count = len(cases) if cases else 0
+        self.show_cases_loaded = True
         pacer_api.upsert_pacer_cases(cases)
         self.load_grid_data()
 
@@ -118,7 +156,6 @@ class PacerPageState(rx.State):
 
 def pacer() -> rx.Component:
     yday = (date.today() - timedelta(days=1)).isoformat()
-    region_options = ["All"]
 
     content = rx.vstack(
         rx.heading("Information from PACER", size="7", text_align="center", width="100%", py="1em"),
@@ -127,10 +164,10 @@ def pacer() -> rx.Component:
 
         rx.hstack(
             rx.vstack(
-                rx.text("Date from"),
+                rx.text("Date from", weight="medium"),
                 rx.input(
-                    type_="date",
-                    default_value=yday,
+                    type="date",
+                    value=yday,
                     width="14rem",
                     on_change=PacerPageState.set_date_from,
                 ),
@@ -138,14 +175,23 @@ def pacer() -> rx.Component:
                 spacing="1",
             ),
             rx.vstack(
-                rx.text("Date to"),
-                rx.input(type_="date", default_value=yday, width="14rem"),
+                rx.text("Date to", weight="medium"),
+                rx.input(
+                    type="date", 
+                    value=yday, 
+                    width="14rem"
+                ),
                 align="start",
                 spacing="1",
             ),
             rx.vstack(
-                rx.text("Region"),
-                rx.select(items=region_options, default_value="All", width="14rem"),
+                rx.text("Region", weight="medium"),
+                rx.select(
+                    items=PacerPageState.region_options,
+                    value=PacerPageState.selected_region,
+                    on_change=PacerPageState.set_selected_region,
+                    width="14rem"
+                ),
                 align="start",
                 spacing="1",
             ),
@@ -157,23 +203,24 @@ def pacer() -> rx.Component:
 
         rx.hstack(
             rx.button("Load more cases", on_click=PacerPageState.load_more_cases),
+            rx.cond(
+                PacerPageState.show_cases_loaded,
+                rx.text(
+                    f"Total new cases loaded: {PacerPageState.cases_loaded_count}",
+                    size="3",
+                    weight="medium",
+                    color="green"
+                ),
+                rx.text("")
+            ),
             align="start",
+            spacing="4",
             width="100%",
         ),
 
         rx.text("Cases previously retrieved from PACER", weight="bold", size="4", mt="5", align="left", width="100%"),
 
-        rx.hstack(
-            rx.button(
-                "Load Cases into Table", 
-                on_click=PacerPageState.load_grid_data,
-                size="2",
-            ),
-            align="start",
-            width="100%",
-            mb="3",
-        ),
-
+        # Table displays automatically on page load
         rx.cond(
             PacerPageState.show_grid,
             rx.box(
@@ -191,7 +238,7 @@ def pacer() -> rx.Component:
                                 ),
                                 spacing="1",
                             ),
-                            width="12%"
+                            width="20%"
                         ),
                         rx.box(
                             rx.hstack(
@@ -204,7 +251,7 @@ def pacer() -> rx.Component:
                                 ),
                                 spacing="1",
                             ),
-                            width="8%"
+                            width="15%"
                         ),
                         rx.box(
                             rx.hstack(
@@ -217,7 +264,7 @@ def pacer() -> rx.Component:
                                 ),
                                 spacing="1",
                             ),
-                            width="8%"
+                            width="15%"
                         ),
                         rx.box(
                             rx.hstack(
@@ -230,7 +277,7 @@ def pacer() -> rx.Component:
                                 ),
                                 spacing="1",
                             ),
-                            width="10%"
+                            width="15%"
                         ),
                         rx.box(
                             rx.hstack(
@@ -243,7 +290,7 @@ def pacer() -> rx.Component:
                                 ),
                                 spacing="1",
                             ),
-                            width="10%"
+                            width="15%"
                         ),
                         rx.box(
                             rx.hstack(
@@ -269,12 +316,8 @@ def pacer() -> rx.Component:
                                 ),
                                 spacing="1",
                             ),
-                            width="8%"
+                            width="10%"
                         ),
-                        rx.box(rx.text("Case Link", weight="bold", size="2"), width="8%"),
-                        rx.box(rx.text("Summary", weight="bold", size="2"), width="8%"),
-                        rx.box(rx.text("Parties", weight="bold", size="2"), width="8%"),
-                        rx.box(rx.text("Attorney", weight="bold", size="2"), width="10%"),
                         width="100%",
                         border_bottom="2px solid #333",
                         pb="2"
@@ -284,49 +327,21 @@ def pacer() -> rx.Component:
                         PacerPageState.rows,
                         lambda case_data: rx.vstack(
                             rx.hstack(
-                                rx.box(rx.text(case_data["case_title"], size="2"), width="12%"),
-                                rx.box(rx.text(case_data["court_id"], size="2"), width="8%"),
-                                rx.box(rx.text(case_data["case_id"], size="2"), width="8%"),
-                                rx.box(rx.text(case_data["case_number"], size="2"), width="10%"),
-                                rx.box(rx.text(case_data["case_type"], size="2"), width="10%"),
-                                rx.box(rx.text(case_data["date_filed"], size="2"), width="10%"),
-                                rx.box(rx.text(case_data["jurisdiction_type"], size="2"), width="8%"),
                                 rx.box(
                                     rx.link(
-                                        "link",
+                                        case_data["case_title"],
                                         href=case_data["case_link"],
                                         target="_blank",
                                         size="2"
                                     ), 
-                                    width="8%"
+                                    width="20%"
                                 ),
-                                rx.box(
-                                    rx.link(
-                                        "link",
-                                        href=case_data["case_summary"],
-                                        target="_blank",
-                                        size="2"
-                                    ), 
-                                    width="8%"
-                                ),
-                                rx.box(
-                                    rx.link(
-                                        "link",
-                                        href=case_data["parties"],
-                                        target="_blank",
-                                        size="2"
-                                    ), 
-                                    width="8%"
-                                ),
-                                rx.box(
-                                    rx.link(
-                                        "link",
-                                        href=case_data["attorney"],
-                                        target="_blank",
-                                        size="2"
-                                    ), 
-                                    width="10%"
-                                ),
+                                rx.box(rx.text(case_data["court_id"], size="2"), width="15%"),
+                                rx.box(rx.text(case_data["case_id"], size="2"), width="15%"),
+                                rx.box(rx.text(case_data["case_number"], size="2"), width="15%"),
+                                rx.box(rx.text(case_data["case_type"], size="2"), width="15%"),
+                                rx.box(rx.text(case_data["date_filed"], size="2"), width="10%"),
+                                rx.box(rx.text(case_data["jurisdiction_type"], size="2"), width="10%"),
                                 width="100%",
                                 py="2"
                             ),
