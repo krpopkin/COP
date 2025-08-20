@@ -85,10 +85,6 @@ def search_cases_by_date(token: str, api_root: str, date_from: str, date_to: str
     court_id = get_court_id_from_region(region)
     
     # New payload with dateFrom, dateTo, region, jurisdiction type, and case status
-    print('***********************  MY PRINT STATEMENTS *************************')
-    print(f'Date from:', date_from)
-    print(f'Date to:', date_to)
-    print(f'region in:', region)
     payload = {
         "dateFiledFrom": date_from,
         "dateFiledTo": date_to,
@@ -100,11 +96,9 @@ def search_cases_by_date(token: str, api_root: str, date_from: str, date_to: str
     if court_id:
         payload["courtId"] = [court_id]  # courtId expects a list
 
-    print('court id:', court_id)
-
-    print("📤 Payload sent:", payload)
+    #print("📤 Payload sent:", payload)
     r = requests.post(url, headers=headers, json=payload)
-    print("📬 Response body:", r.text)
+    #print("📬 Response body:", r.text)
 
     if r.status_code != 200:
         print(f"❌ ERROR {r.status_code}: {r.reason}")
@@ -117,8 +111,6 @@ def search_cases_by_date(token: str, api_root: str, date_from: str, date_to: str
 
     cases = data.get("content") or data.get("cases") or []
     print(f"✅ Found {data.get('pageInfo', {}).get('totalElements', len(cases))} cases (showing all).")
-    # for c in cases:
-    #     print(c)
     return cases
 
 def upsert_pacer_cases(cases: List[Dict[str, Any]]) -> int:
@@ -220,7 +212,7 @@ def upsert_pacer_cases(cases: List[Dict[str, Any]]) -> int:
         finally:
             conn.close()
 
-    print(f"💾 Upsert complete: inserted={inserted}, updated={updated}")
+    #print(f"💾 Upsert complete: inserted={inserted}, updated={updated}")
     return inserted + updated
 
 if __name__ == "__main__":
